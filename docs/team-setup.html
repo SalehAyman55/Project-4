@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SIEM detection engineering, alert triage and SOC operations lab: دليل الفريق</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root{--bg:#f2f5f3;--card:#fff;--ink:#14201e;--mute:#5b6b67;--line:#d3dcd8;--acc:#0f766e;--acc2:#b45309;--code:#10201d;--codeink:#d7efe8;--chip:#e3efec}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1514;--card:#142120;--ink:#e6f1ee;--mute:#93a8a2;--line:#27403c;--acc:#4fd1c0;--acc2:#f0a64b;--code:#08100f;--codeink:#cfeee7;--chip:#1b3230}}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.85 "IBM Plex Sans Arabic",Tahoma,system-ui,sans-serif;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.wrap{max-width:900px;margin:0 auto;padding:0 20px 64px}
+header{padding:48px 0 20px;border-bottom:2px solid var(--ink)}
+header h1{font-size:clamp(28px,5vw,42px);line-height:1.3;margin:0 0 10px}
+header p{margin:0;color:var(--mute);max-width:62ch}
+nav{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
+nav a{color:var(--ink);text-decoration:none;background:var(--chip);padding:4px 14px;border-radius:99px;font-size:14px}
+nav a:focus-visible,summary:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+section{margin-top:44px}
+h2{font-size:26px;margin:0 0 6px;border-inline-start:6px solid var(--acc);padding-inline-start:12px}
+h3{font-size:18px;margin:26px 0 6px}
+p{margin:8px 0;max-width:68ch}
+.note{background:var(--card);border:1px solid var(--line);border-inline-start:5px solid var(--acc2);padding:10px 16px;margin:14px 0;border-radius:6px}
+.scroll{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:15px}
+th,td{padding:9px 12px;text-align:start;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--chip);font-weight:700}
+tr:last-child td{border-bottom:0}
+code,pre{font-family:"IBM Plex Mono",Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+code{background:var(--chip);padding:1px 6px;border-radius:4px;font-size:.9em}
+pre{background:var(--code);color:var(--codeink);padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:13.5px;line-height:1.6;text-align:left;margin:12px 0}
+pre code{background:none;padding:0}
+.main td:first-child{border-inline-start:5px solid var(--acc)}
+.avoid td:first-child{border-inline-start:5px solid var(--acc2)}
+ol,ul{padding-inline-start:24px;max-width:70ch}
+li{margin:6px 0}
+details{background:var(--card);border:1px solid var(--line);border-radius:8px;margin:10px 0;padding:2px 16px}
+summary{cursor:pointer;font-weight:600;padding:10px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:14px 0}
+.box{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 16px}
+.box b{display:block;margin-bottom:4px}
+footer{margin-top:56px;color:var(--mute);font-size:14px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1><span dir="ltr">SIEM detection engineering, alert triage and SOC operations lab</span></h1>
+  <p>أجهزتنا متوسطة (Core i5/i7 وكروت RTX 3050 و3060)، وإحنا في أماكن مختلفة والـ IP عند الكل بيتغير، وكل حاجة لازم تبقى مجانية. الصفحة دي دليل الفريق: النماذج، الربط عن بُعد، الشغل على جهاز واحد أو اتنين، وتجهيز الريبو وحماية الأسرار.</p>
+  <nav>
+    <a href="#models">النماذج</a><a href="#remote">ربط الأجهزة</a><a href="#solo">جهاز واحد</a><a href="#two">جهازين</a><a href="#github">GitHub</a><a href="#repo">الريبو الجديد</a><a href="#env">حماية .env</a><a href="#check">اختبار سريع</a><a href="#faq">لو حصلت مشكلة</a>
+  </nav>
+</header>
+
+<section id="models">
+  <h2>أي نماذج AI هنستخدمها؟</h2>
+  <p>القاعدة: نماذج <b>7 إلى 8 مليار بارامتر بصيغة Q4</b> (حجمها حوالي 5 جيجا). متوسطة، بتشتغل كلها على الكارت، ومش هتخنق الجهاز لو شغّلنا نموذج واحد في المرة.</p>
+  <div class="scroll"><table class="main">
+    <thead><tr><th>الفئة</th><th>الاسم في Ollama</th><th>الحجم تقريبًا</th><th>الكارت المطلوب</th><th>بنستخدمه في إيه</th></tr></thead>
+    <tbody>
+      <tr><td><b>أساسي</b></td><td><code>qwen2.5:7b</code></td><td>4.7 جيجا</td><td>6 إلى 8 جيجا VRAM</td><td>النموذج الافتراضي على <code>ai-host</code>، كويس في إخراج JSON منظم</td></tr>
+      <tr><td><b>أساسي</b></td><td><code>llama3.1:8b</code></td><td>4.9 جيجا</td><td>6 إلى 8 جيجا VRAM</td><td>المرشح التاني لمقارنة الأسبوع السادس</td></tr>
+      <tr><td><b>خفيف</b></td><td><code>llama3.2:3b</code></td><td>2 جيجا</td><td>4 جيجا VRAM</td><td>التطوير على اللابتوبات الضعيفة والتجارب السريعة</td></tr>
+      <tr><td>اختياري</td><td><code>gemma3:4b</code></td><td>3.3 جيجا</td><td>4 إلى 6 جيجا VRAM</td><td>بديل خفيف تاني</td></tr>
+    </tbody>
+  </table></div>
+  <div class="scroll"><table class="avoid">
+    <thead><tr><th>تجنب</th><th>السبب</th></tr></thead>
+    <tbody>
+      <tr><td>نماذج 12B فما فوق (زي <code>gemma3:12b</code> و<code>qwen3:14b</code>)</td><td>بتاخد حوالي 9 جيجا أو أكتر، فبتنزل على الرامات والجهاز بيبطأ جدًا</td></tr>
+      <tr><td>نماذج 1B فما أقل</td><td>ضعيفة في الالتزام بشكل JSON وفي التفرقة بين TP و FP</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note">كل الأرقام لصيغة Q4_K_M اللي Ollama بينزلها افتراضيًا. كارت 3060 اللابتوب (6 جيجا) وكارت 3050 اللابتوب (4 جيجا) ممكن ما يشيلوش نموذج 7B بالكامل. أول ما تحمّل النموذج اكتب <code>ollama ps</code>، ولو ظهر إنه مش <b>100% GPU</b> انزل للفئة الخفيفة.</div>
+
+  <h3>إعدادات تخلي الجهاز مريح</h3>
+<pre><code>export OLLAMA_MAX_LOADED_MODELS=1   # one model in memory
+export OLLAMA_NUM_PARALLEL=1        # one request at a time
+export OLLAMA_KEEP_ALIVE=5m         # unload after 5 minutes idle
+# in code: temperature 0.1, num_ctx 4096, format json</code></pre>
+  <ul>
+    <li>مقارنة الأسبوع السادس: <code>qwen2.5:7b</code> ضد <code>llama3.1:8b</code>، و<code>llama3.2:3b</code> كخط أساس صغير.</li>
+    <li>لو نزلت نماذج 7B إلى 9B أحدث، مسموح بشرط تتحمّل نفس حد الـ VRAM، وتتسجل بالاسم الكامل ونسخة البرومبت في الـ validation log.</li>
+    <li>الموديلات متترفعش على GitHub أبدًا. كل واحد بينزّلها بـ <code>ollama pull</code>.</li>
+  </ul>
+</section>
+
+<section id="remote">
+  <h2>إزاي نربط الأجهزة وإحنا بعاد عن بعض؟</h2>
+  <p>الـ IP عندنا بيتغير، وكتير من شركات الإنترنت بتحط الراوتر ورا CGNAT، فـ port forwarding مش حل. الحل: شبكة خاصة افتراضية (<b>Tailscale</b>، الخطة الشخصية المجانية). كل جهاز بياخد اسم ثابت زي <code>siem</code> و<code>target</code> حتى لو الـ IP الحقيقي اتغير.</p>
+  <div class="note">حد الخطة المجانية: لحد 6 مستخدمين وأجهزة شخصية غير محدودة حسب صفحات الأسعار في أغسطس 2026، وكان زمان 3 مستخدمين بس. <b>اتأكد من صفحة الأسعار في الأسبوع الأول.</b> لو عددكم زاد أو الحد اتغير، البدائل المجانية: Headscale (بتستضيفه بنفسك) أو ZeroTier.</div>
+
+  <h3>مين بيشغّل إيه؟</h3>
+  <div class="grid">
+    <div class="box"><b>أقوى كارت (3060 ورامات 16)</b><code>ai-host</code>: Ollama وخدمة FastAPI. الجهاز الوحيد اللي محتاج النموذج الكبير.</div>
+    <div class="box"><b>أكتر رامات (16 جيجا فأكتر)</b><code>siem</code>: جهاز Wazuh الافتراضي (4 vCPU و8 جيجا).</div>
+    <div class="box"><b>جهاز تالت</b><code>attacker</code> و<code>target</code> (2 جيجا لكل واحد). خفاف ومش بيعطلوا الـ SIEM.</div>
+    <div class="box"><b>باقي الفريق</b><code>analyst</code> من المتصفح، وكل واحد يطوّر على ملفات alert جاهزة ونموذج 3B خفيف.</div>
+  </div>
+  <p>مش لازم كل واحد يشغّل كل حاجة. الفكرة إننا نوزع الأحمال على الأجهزة ونتشارك الباقي عبر الشبكة.</p>
+
+  <h3>الخطوات</h3>
+  <ol>
+    <li>واحد من الفريق يعمل الحساب وينشئ الشبكة (tailnet) ويدعو الباقي من لوحة الإدارة.</li>
+    <li>ثبّت Tailscale <b>جوه كل VM وعلى جهاز الـ AI</b>، مش بس على اللابتوب:
+<pre><code>curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --hostname=target     # attacker | target | siem | ai-host</code></pre></li>
+    <li>حط وسوم (tags) للأجهزة وطبّق قواعد الوصول (ACL) تحت. الأصل ممنوع، وبنفتح بس المسارات اللي في الرسمة.</li>
+    <li>استخدم الأسماء في كل حاجة: وكلاء Wazuh بيشاوروا على <code>&lt;address&gt;siem&lt;/address&gt;</code>، والـ SIEM بينادي <code>http://ai-host:8000</code>، وقائمة الـ allow-list بالأسماء مش بالـ IP.</li>
+    <li>سيب Ollama على <code>127.0.0.1</code>. الفريق بيكلم خدمة FastAPI بس على بورت 8000 بتوكن.</li>
+  </ol>
+
+  <h3>قواعد الوصول (ACL)</h3>
+<pre><code>{
+  "tagOwners": { "tag:attacker": ["autogroup:admin"], "tag:target": ["autogroup:admin"],
+                 "tag:siem": ["autogroup:admin"], "tag:ai": ["autogroup:admin"] },
+  "acls": [
+    { "action": "accept", "src": ["tag:attacker"], "dst": ["tag:target:*"] },
+    { "action": "accept", "src": ["tag:target"],   "dst": ["tag:siem:1514,1515"] },
+    { "action": "accept", "src": ["tag:siem"],     "dst": ["tag:ai:8000", "tag:target:*"] },
+    { "action": "accept", "src": ["autogroup:member"], "dst": ["tag:siem:443", "tag:ai:8000"] }
+  ]
+}</code></pre>
+
+  <h3>تحذيرات مهمة للمشروع</h3>
+  <ul>
+    <li><b>متفعّلش Tailscale SSH على <code>target</code>.</b> بيتخطى sshd، فهجمات الـ brute force مش هتظهر في <code>auth.log</code> والـ rules مش هتشتغل.</li>
+    <li>خلّي Suricata على <code>target</code> يسمع على الواجهة <code>tailscale0</code>، لأن ترافيك الهجوم بيوصل منها.</li>
+    <li>الـ attacker يوصل لـ <code>target</code> بس. وما تفتحوش أي بورت من المعمل على الإنترنت العام.</li>
+    <li>جرّب مرة واحدة في بداية الأسبوع الثاني إن قاعدة <code>block_ip</code> فعلًا بتقطع ترافيك الشبكة الخاصة من عنوان الـ attacker.</li>
+  </ul>
+</section>
+
+<section id="github">
+  <h2>GitHub والأدوات المجانية</h2>
+  <ul>
+    <li><b>GitHub:</b> الريبو والـ Issues ولوحة Projects والـ Actions، كله مجاني. واحد Issue لكل deliverable كما في الـ README.</li>
+    <li><b>حماية الفرع <code>main</code>:</b> على الخطة المجانية بتشتغل مع الريبو <b>العام</b> بس، والريبو الخاص محتاج خطة مدفوعة. فخلّي الريبو عام وما تحطوش فيه أسرار.</li>
+    <li><b>الأسرار</b> (مفتاح AbuseIPDB وتوكن Telegram وتوكن FastAPI) في ملف <code>.env</code> ومكتوب في <code>.gitignore</code>.</li>
+    <li><b>شغل مع بعض:</b> VS Code Live Share للبرمجة المشتركة، وDiscord أو Google Meet للـ stand-up اليومي، وبوت Telegram للتنبيهات.</li>
+    <li><b>التطوير بدون المعمل كله:</b> خزّنوا عينات alert JSON في <code>ai-triage/fixtures/</code> وكل واحد يجرب البرومبت عليها بنموذج 3B محليًا، وبعدين التقييم الرسمي بيتعمل على <code>ai-host</code>.</li>
+  </ul>
+</section>
+
+<section id="solo">
+  <h2>كل واحد يشتغل المشروع كله على جهازه</h2>
+  <p>ينفع. كل عضو يشغّل المعمل كله على جهازه (الوضع A)، لكن <b>مش بنبعت ملفات لبعض</b>. اللي بينتقل بين الفريق هو الشغل المكتوب فقط (قواعد الكشف والبرومبتات وعينات الـ alerts والتوثيق)، وبيتنقل عن طريق Git: Branch ثم Pull Request ثم الباقي يعمل <code>git pull</code>.</p>
+  <ul>
+    <li><b>مشكلة "بتشتغل عندي بس":</b> كل إعدادات التثبيت تتكتب كسكريبتات في <code>infra/</code> (مثلًا <code>setup-siem.sh</code>) بدل ما كل واحد يضبطها بإيده.</li>
+    <li><b>ملفات الـ VM</b> (OVA وVDI) بالجيجات ومش بتترفع على GitHub. الأحسن سكريبت يبنيها من الصفر، ولو لازم نشاركها نستخدم Google Drive.</li>
+    <li>قسّموا الشغل حسب الأدوار في الـ README، وكل واحد بيسلّم الـ deliverable بتاعه عن طريق PR ومعاه مراجع.</li>
+  </ul>
+
+  <h3>جهاز 16 جيجا رام: الميزانية والنماذج</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>الجزء</th><th>الرامات</th><th>ملاحظة</th></tr></thead>
+    <tbody>
+      <tr><td>ويندوز والمتصفح</td><td>حوالي 4 جيجا</td><td>اقفل أي برامج تقيلة</td></tr>
+      <tr><td>VM الـ SIEM (Wazuh)</td><td>6 جيجا (المنصوح بيه 8)</td><td>التوصية الرسمية 8 جيجا و4 vCPU. بـ 6 جيجا بيمشي في المعمل مع 2 أو 3 agents لكن أبطأ. خفّض ذاكرة الـ indexer (JVM heap) لحوالي 2 جيجا.</td></tr>
+      <tr><td>VM الـ target</td><td>1.5 إلى 2 جيجا</td><td>Ubuntu Server بدون واجهة رسومية</td></tr>
+      <tr><td>VM الـ attacker (Kali)</td><td>1.5 إلى 2 جيجا</td><td>شغّله وقت الهجوم بس</td></tr>
+      <tr><td>Ollama</td><td>النموذج على الكارت، وحوالي 1 إلى 2 جيجا رامات</td><td>مش هيتحمّل مع كل الـ VMs فوق، فاشتغل على مرحلتين</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>طريقة المرحلتين:</b> المرحلة الأولى هجوم وكشف (SIEM وtarget وattacker شغالين، والنموذج مقفول). بعدها اقفل الـ attacker والـ target، وشغّل المرحلة التانية: الـ triage بالنموذج على الـ alerts المحفوظة في <code>ai-triage/fixtures/</code>.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>جهازك</th><th>النموذج</th></tr></thead>
+    <tbody>
+      <tr><td>كارت 8 جيجا VRAM فما فوق (مثلًا 3060 ديسكتوب)</td><td><code>qwen2.5:7b</code> في مرحلة الـ triage</td></tr>
+      <tr><td>كارت 4 إلى 6 جيجا (لابتوب 3050 أو 3060)</td><td><code>llama3.2:3b</code> أو <code>gemma3:4b</code></td></tr>
+      <tr><td>بدون كارت مناسب (CPU فقط)</td><td><code>llama3.2:3b</code>. شغّال لكن بطيء، وكفاية للتطوير مش للتقييم الرسمي.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note">التقييم الرسمي في الأسبوع السادس (مقارنة النماذج) لازم يتعمل على نفس الجهاز ونفس الإعدادات عشان الأرقام تتقارن، ويفضل على <code>ai-host</code> الأقوى.</div>
+</section>
+
+<section id="two">
+  <h2>لو عندك جهازين في البيت: توزيع العمليات</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>الجهاز</th><th>بيشغّل</th><th>ليه</th></tr></thead>
+    <tbody>
+      <tr><td><b>أ: الجهاز اللي فيه الكارت الأقوى</b></td><td><code>ai-host</code> (Ollama وFastAPI) ومتصفح الـ analyst</td><td>النموذج محتاج الكارت، والباقي خفيف عليه</td></tr>
+      <tr><td><b>ب: الجهاز الأكتر رامات أو أقوى معالج</b></td><td>VM الـ <code>siem</code> وVMs الـ <code>target</code> والـ <code>attacker</code></td><td>Wazuh أتقل حاجة في الرامات والـ CPU</td></tr>
+    </tbody>
+  </table></div>
+  <p>لو الجهاز ب عنده 16 جيجا بس، شغّل الـ SIEM (8 جيجا) والـ target عليه، وانقل الـ attacker للجهاز أ لأن Kali خفيف.</p>
+
+  <h3>إزاي نربطهم ببعض؟</h3>
+  <p><b>الطريقة الأولى (الأسهل والأفضل): Tailscale على الجهازين</b>، نفس خطوات الفريق بالظبط. الأسماء بتشتغل سواء الجهازين في نفس البيت أو في مكانين، ومفيش إعداد راوتر.</p>
+  <p><b>الطريقة التانية: الشبكة المحلية.</b> الجهازين على نفس الراوتر (يفضل كابل Ethernet):</p>
+  <ol>
+    <li>في VirtualBox خلّي كارت الشبكة للـ VMs على <b>Bridged Adapter</b> عشان ياخدوا IP من الراوتر.</li>
+    <li>ثبّت الـ IP من الراوتر (DHCP reservation) أو اكتب الأسماء في ملف <code>/etc/hosts</code> على كل جهاز، علشان ما تتغيرش عليك.</li>
+    <li>خلّي خدمة FastAPI تسمع على الشبكة (<code>--host 0.0.0.0</code>) بتوكن، وسيب Ollama على <code>127.0.0.1</code>.</li>
+    <li>في جدار حماية ويندوز، افتح بورت 8000 للجهاز التاني بس.</li>
+  </ol>
+  <div class="note">هذه الطريقة تعمل داخل البيت فقط. لو هتشتغل من بره البيت أو مع الفريق، استخدم Tailscale.</div>
+</section>
+
+<section id="repo">
+  <h2>نضيف إيه في الريبو الجديد؟</h2>
+  <p>جهزت لك الملفات الأساسية جاهزة في المجلد (انسخها لجذر الريبو). الاسم الحقيقي للريبو حطه مكان <code>&lt;repo-name&gt;</code>.</p>
+  <h3>ملفات جاهزة</h3>
+  <ul>
+    <li><code>.gitignore</code> و<code>.env.example</code> و<code>.pre-commit-config.yaml</code> و<code>requirements.txt</code> و<code>LICENSE</code></li>
+    <li><code>.github/PULL_REQUEST_TEMPLATE.md</code> وقالب Issue للـ deliverable</li>
+    <li><code>infra/overlay/acl.hujson</code> وباقي المجلدات (بملف <code>.gitkeep</code> عشان Git يقبل المجلدات الفاضية)</li>
+  </ul>
+  <h3>إعدادات من صفحة الريبو على GitHub</h3>
+  <ol>
+    <li><b>About:</b> الوصف = اسم المشروع، وTopics مثل <code>siem</code> و<code>wazuh</code> و<code>soc</code> و<code>ollama</code> و<code>mitre-attack</code>.</li>
+    <li><b>Collaborators:</b> Settings ثم Collaborators، وادعي كل عضو بإيميله أو يوزره.</li>
+    <li><b>حماية main:</b> Settings ثم Rules (أو Branches): اشترط Pull Request ومراجعة واحدة، وامنع الـ force push. على الخطة المجانية ده بيشتغل مع الريبو العام.</li>
+    <li><b>Labels وMilestones:</b> <code>task</code> و<code>bug</code> و<code>week-1</code> لحد <code>week-6</code>، وMilestone لكل أسبوع.</li>
+    <li><b>Projects:</b> لوحة Kanban بالأعمدة Todo وDoing وReview وDone.</li>
+    <li><b>Issues:</b> واحد لكل deliverable من جدول الـ README (19 بند).</li>
+    <li>فعّل خيار حذف الفرع تلقائيًا بعد الدمج (Automatically delete head branches)، وSquash merge.</li>
+  </ol>
+</section>
+
+<section id="env">
+  <h2>إزاي نحمي ملف <code>.env</code>؟</h2>
+  <ol>
+    <li><b>قبل أول commit:</b> تأكد إن <code>.env</code> مكتوب في <code>.gitignore</code>، وتحقق بـ:
+<pre><code>git check-ignore -v .env      # must print the ignoring rule
+git status                    # .env must not be listed</code></pre></li>
+    <li><b>الملف المرفوع هو <code>.env.example</code> بس</b>، وفيه قيم وهمية. كل واحد ينسخه: <code>cp .env.example .env</code>.</li>
+    <li><b>hook يمنع التسريب قبل الـ commit:</b>
+<pre><code>pip install pre-commit
+pre-commit install            # gitleaks now scans every commit</code></pre></li>
+    <li><b>على GitHub:</b> Settings ثم Code security: اتأكد إن Secret scanning وPush protection شغالين.</li>
+    <li><b>لو اتسرّب سر:</b> الأول <b>الغي المفتاح وغيّره</b> (AbuseIPDB، وتوكن Telegram من BotFather، وتوكن الـ FastAPI). بعدين نضّف التاريخ بأداة <code>git filter-repo</code>. حذف الملف في commit جديد مش كفاية، وافترض إن المفتاح اتحرق.</li>
+    <li><b>مشاركة الأسرار في الفريق:</b> كل واحد يعمل مفاتيحه المجانية بنفسه (AbuseIPDB وTelegram bot). توكن الـ FastAPI المشترك يتبعت مرة واحدة برسالة خاصة، وغيّره بعد انتهاء المشروع. متبعتوش <code>.env</code> في جروب أو سكرين شوت.</li>
+    <li><b>العينات:</b> قبل ما ترفع أي سجلات أو alerts للريبو، امسح الـ IPs الحقيقية وأسماء المستخدمين.</li>
+  </ol>
+</section>
+
+<section id="check">
+  <h2>اختبار سريع إن كل حاجة شغالة</h2>
+<pre><code>ping siem                              # from any host: does the name resolve?
+sudo /var/ossec/bin/agent_control -l   # on siem: is the target agent Active?
+curl http://ai-host:8000/health        # from siem: did the AI service answer?
+ollama ps                              # on ai-host: is the model on 100% GPU?</code></pre>
+</section>
+
+<section id="faq">
+  <h2>لو حصلت مشكلة</h2>
+  <details><summary>الاتصال بطيء أو متقطع</summary>
+    <p>لو الاتصال المباشر مش ممكن، Tailscale بيعدّي الترافيك على سيرفرات وسيطة (relays) وده أبطأ. الأجهزة المتصلة من نفس الشبكة بتتصل مباشرة. للأحمال التقيلة زي السجلات الكبيرة، اجمعوا الأجهزة اللي بتتكلم كتير مع بعض في نفس المكان لو أمكن.</p></details>
+  <details><summary>الـ agent مش بيظهر في Wazuh</summary>
+    <p>اتأكد إن <code>tailscale status</code> بيورّي <code>siem</code>، وإن الـ ACL بتفتح بورتي 1514 و1515 من <code>target</code> لـ <code>siem</code>، وإن العنوان في إعداد الـ agent هو اسم <code>siem</code> مش IP قديم.</p></details>
+  <details><summary>النموذج بطيء جدًا</summary>
+    <p>شغّل <code>ollama ps</code>. لو فيه جزء على CPU، انزل لـ <code>llama3.2:3b</code> أو قلّل <code>num_ctx</code>، وأقفل أي نموذج تاني محمّل.</p></details>
+  <details><summary>عددنا زاد عن حد الخطة المجانية</summary>
+    <p>استخدم Headscale (سيرفر تحكم بتستضيفه بنفسك) مع نفس عملاء Tailscale، أو ZeroTier. الأسماء والـ ACL بتتنقل بتعديل بسيط.</p></details>
+</section>
+
+<footer>للاستخدام التعليمي داخل معمل معزول فقط. ما تشغّلوش أي تقنية هجوم على أنظمة مش بتاعتكم.</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Big or sensitive files: share these outside git
+*.ova
+*.vdi
+*.vmdk
+*.gguf
+*.pcap
+alerts.json
+*.log
+.DS_Store

@@ -1,0 +1,15 @@
+// Tailscale ACL: default deny, only the lab flows are open.
+{
+  "tagOwners": {
+    "tag:attacker": ["autogroup:admin"],
+    "tag:target":   ["autogroup:admin"],
+    "tag:siem":     ["autogroup:admin"],
+    "tag:ai":       ["autogroup:admin"]
+  },
+  "acls": [
+    { "action": "accept", "src": ["tag:attacker"],      "dst": ["tag:target:*"] },
+    { "action": "accept", "src": ["tag:target"],        "dst": ["tag:siem:1514,1515"] },
+    { "action": "accept", "src": ["tag:siem"],          "dst": ["tag:ai:8000", "tag:target:*"] },
+    { "action": "accept", "src": ["autogroup:member"],  "dst": ["tag:siem:443", "tag:ai:8000"] }
+  ]
+}
